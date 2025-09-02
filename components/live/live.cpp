@@ -3,8 +3,12 @@
 #include <regex>
 #include <sstream>
 
-// Note: ESP32-P4 hardware decoder headers not available in current ESP-IDF version
-// Hardware acceleration will be disabled for now
+// ESP-IDF includes for hardware video decoding (ESP32-P4 only)
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+#include "esp_jpeg_dec.h"
+#include "esp_h264_dec.h"
+#include "esp_ppa.h"
+#endif
 
 namespace esphome {
 namespace live {
@@ -57,7 +61,6 @@ void LiveComponent::loop() {
 }
 
 bool LiveComponent::init_hardware_decoders() {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
   esp_err_t ret;
 
   // Initialiser le décodeur JPEG hardware
@@ -108,14 +111,9 @@ bool LiveComponent::init_hardware_decoders() {
   }
 
   return true;
-#else
-  ESP_LOGW(TAG, "Hardware decoders not available on this platform");
-  return false;
-#endif
 }
 
 void LiveComponent::cleanup_hardware_decoders() {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (jpeg_decoder_) {
     jpeg_del_decoder_engine(jpeg_decoder_);
     jpeg_decoder_ = nullptr;
@@ -130,7 +128,6 @@ void LiveComponent::cleanup_hardware_decoders() {
     ppa_unregister_client(ppa_client_);
     ppa_client_ = nullptr;
   }
-#endif
 }
 
 bool LiveComponent::start_stream() {
@@ -171,7 +168,6 @@ void LiveComponent::stop_stream() {
 }
 
 bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!jpeg_decoder_) {
     ESP_LOGW(TAG, "JPEG decoder not initialized");
     return false;
@@ -212,14 +208,9 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
-#else
-  ESP_LOGW(TAG, "Hardware JPEG decoder not available on this platform");
-  return false;
-#endif
 }
 
 bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!h264_decoder_) {
     ESP_LOGW(TAG, "H.264 decoder not initialized");
     return false;
@@ -263,10 +254,6 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
-#else
-  ESP_LOGW(TAG, "Hardware H.264 decoder not available on this platform");
-  return false;
-#endif
 }
 
 void LiveComponent::process_rtp_stream() {
@@ -380,55 +367,8 @@ void LiveComponent::display_frame_direct(const VideoFrame &frame) {
 }
 
 bool LiveComponent::scale_frame_with_ppa(const VideoFrame &input, VideoFrame &output) {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-  if (!ppa_client_) {
-    return false;
-  }
-
-  // Configuration du scaling PPA
-  ppa_srm_oper_config_t srm_config = {};
-  srm_config.in.buffer = input.data;
-  srm_config.in.pic_w = input.width;
-  srm_config.in.pic_h = input.height;
-  srm_config.in.block_w = input.width;
-  srm_config.in.block_h = input.height;
-  srm_config.in.block_offset_x = 0;
-  srm_config.in.block_offset_y = 0;
-  srm_config.in.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
-
-  srm_config.out.buffer = decode_buffer_.get() + input.size; // Utiliser l'autre moitié du buffer
-  srm_config.out.buffer_size = display_w_ * display_h_ * 2; // RGB565
-  srm_config.out.pic_w = display_w_;
-  srm_config.out.pic_h = display_h_;
-  srm_config.out.block_offset_x = 0;
-  srm_config.out.block_offset_y = 0;
-  srm_config.out.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
-
-  srm_config.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
-  srm_config.scale_x = (float)display_w_ / input.width;
-  srm_config.scale_y = (float)display_h_ / input.height;
-  srm_config.mirror_x = false;
-  srm_config.mirror_y = false;
-
-  esp_err_t ret = ppa_do_scale_rotate_mirror(ppa_client_, &srm_config);
-  if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "PPA scaling failed: %s", esp_err_to_name(ret));
-    return false;
-  }
-
-  output.data = srm_config.out.buffer;
-  output.size = display_w_ * display_h_ * 2;
-  output.width = display_w_;
-  output.height = display_h_;
-  output.timestamp = input.timestamp;
-  output.is_keyframe = input.is_keyframe;
-
-  return true;
-#else
-  // Software scaling fallback (basic implementation)
-  ESP_LOGW(TAG, "Hardware PPA not available, no scaling performed");
+  ESP_LOGW(TAG, "Hardware PPA not available - no scaling performed");
   return false;
-#endif
 }
 
 // Basic RTSP implementation using ESP-IDF sockets
