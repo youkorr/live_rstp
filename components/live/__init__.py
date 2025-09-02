@@ -1,7 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from esphome.components import esp32, display, lvgl
+from esphome.components import esp32, display
+from esphome import automation
 
 DEPENDENCIES = ["esp32", "wifi"]
 
@@ -42,10 +43,16 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_DISPLAY_AREA): DISPLAY_AREA_SCHEMA,
     cv.Optional(CONF_LCD_PANEL): cv.use_id(display.DisplayBuffer),
     
-    # Callbacks
-    cv.Optional(CONF_ON_FRAME): cv.automation.validate_automation(single=True),
-    cv.Optional(CONF_ON_CONNECT): cv.automation.validate_automation(single=True),
-    cv.Optional(CONF_ON_DISCONNECT): cv.automation.validate_automation(single=True),
+    # Callbacks - using automation triggers
+    cv.Optional(CONF_ON_FRAME): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template(live_ns.struct("VideoFrame").operator("const").operator("ref")))
+    }),
+    cv.Optional(CONF_ON_CONNECT): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
+    }),
+    cv.Optional(CONF_ON_DISCONNECT): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
+    }),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
