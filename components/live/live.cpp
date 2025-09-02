@@ -1,5 +1,5 @@
-#include “live.h”
-#include “esphome/core/log.h”
+#include "live.h"
+#include "esphome/core/log.h"
 #include <regex>
 #include <sstream>
 
