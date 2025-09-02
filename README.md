@@ -1,288 +1,241 @@
-esphome:
-name: esp32-p4-video-streamer
-platform: ESP32
-board: esp32-s3-devkitc-1
-platformio_options:
-board_build.flash_mode: qio
-board_build.partitions: huge_app.csv
-build_flags:
-- -DCONFIG_ESP32P4_JPEG_DECODE_ACCELERATE
-- -DCONFIG_ESP32P4_H264_DECODE_ACCELERATE
-- -DCONFIG_ESP32P4_PPA_ACCELERATE
+# Exemples d’utilisation du composant LIVE avec ESP32-P4
 
-wifi:
-ssid: “VotreSSID”  
-password: “VotreMotDePasse”
+## 1. Caméra IP H.264 haute résolution
 
-logger:
-level: INFO
-
-api:
-encryption:
-key: “votre_cle_api”
-
-ota:
-password: “votre_mot_de_passe_ota”
-
-external_components:
-
-- source:
-  type: local
-  path: components
-
-# Configuration SPI pour écran haute résolution
-
-spi:
-
-- id: display_spi
-  clk_pin: GPIO14
-  mosi_pin: GPIO13
-  miso_pin: GPIO12
-  frequency: 80MHz
-
-# Écran LCD haute résolution pour la vidéo
-
-display:
-
-- platform: ili9xxx
-  model: ili9488  # Écran 480x320
-  spi_id: display_spi
-  cs_pin: GPIO15
-  dc_pin: GPIO2
-  reset_pin: GPIO4
-  rotation: 0
-  id: video_display
-  update_interval: never  # Mise à jour directe par le composant vidéo
-
-# Configuration LVGL pour les contrôles uniquement
-
-lvgl:
-id: lvgl_display
-displays:
-- video_display
-buffer_size: 25%  # Buffer réduit car vidéo gérée séparément
-log_level: WARN
-color_depth: 16
-
-# Interface de contrôle overlay
-
-pages:
-- id: control_page
-widgets:
-- obj:
-id: video_overlay
-x: 0
-y: 0
-width: 480
-height: 280
-bg_opa: TRANSP  # Transparent pour la vidéo
-border_width: 0
-
-```
-    - obj:
-        id: control_panel
-        x: 0
-        y: 280
-        width: 480
-        height: 40
-        bg_color: 0x000000
-        bg_opa: COVER
-        widgets:
-          - btn:
-              id: play_btn
-              x: 10
-              y: 5
-              width: 60
-              height: 30
-              widgets:
-                - label:
-                    text: "▶"
-                    align: center
-              on_click:
-                - lambda: |-
-                    if (!id(rtsp_stream)->is_streaming()) {
-                      id(rtsp_stream)->start_stream();
-                    } else {
-                      id(rtsp_stream)->stop_stream();
-                    }
-          
-          - label:
-              id: fps_label
-              x: 80
-              y: 15
-              text: "0 FPS"
-          
-          - label:
-              id: resolution_label
-              x: 150
-              y: 15
-              text: "Déconnecté"
-```
-
-# Composant RTSP avec décodage hardware
-
+```yaml
+# Configuration pour caméra IP Hikvision/Dahua
 live:
-id: rtsp_stream
-rtsp_url: “rtsp://admin:password@192.168.1.100:554/h264Preview_01_main”
-buffer_size: 16384      # Buffer plus grand pour la vidéo HD
-timeout: 10000
-target_fps: 25          # FPS cible
-decode_format: “h264”   # ou “jpeg” pour MJPEG
-
-# Configuration hardware
-
-enable_hardware_decode: true
-
-# Zone d’affichage sur l’écran
-
-display_area:
-x: 0
-y: 0
-width: 480
-height: 280
-
-# Callbacks
-
-on_frame:
-- lambda: |-
-// Mettre à jour les informations d’affichage
-char fps_text[20];
-sprintf(fps_text, “%d FPS”, id(rtsp_stream)->get_fps());
-id(fps_label)->set_text(fps_text);
-
-```
-    char res_text[30];
-    sprintf(res_text, "%dx%d", frame.width, frame.height);
-    id(resolution_label)->set_text(res_text);
+  id: hd_camera
+  rtsp_url: "rtsp://admin:password@192.168.1.100:554/h264Preview_01_main"
+  decode_format: "h264"
+  target_fps: 25
+  buffer_size: 32768
+  enable_hardware_decode: true
+  
+  display_area:
+    x: 0
+    y: 0  
+    width: 800
+    height: 600
+    
+  on_frame:
+    - lambda: |-
+        ESP_LOGD("camera", "Frame: %dx%d, %d bytes, keyframe: %s", 
+                 frame.width, frame.height, frame.size,
+                 frame.is_keyframe ? "yes" : "no");
 ```
 
-on_connect:
-- lambda: |-
-auto btn = id(play_btn);
-btn->get_child(0)->set_text(“⏸”);
-id(resolution_label)->set_text(“Connecté”);
+## 2. Caméra MJPEG pour performance
 
-on_disconnect:
-- lambda: |-
-auto btn = id(play_btn);
-btn->get_child(0)->set_text(“▶”);
-id(fps_label)->set_text(“0 FPS”);
-id(resolution_label)->set_text(“Déconnecté”);
+```yaml
+# Configuration pour caméra MJPEG (plus simple, moins de bande passante)
+live:
+  id: mjpeg_camera
+  rtsp_url: "rtsp://user:pass@192.168.1.101:554/mjpeg"
+  decode_format: "jpeg"
+  target_fps: 15  # Plus bas pour économiser la bande passante
+  buffer_size: 16384
+  
+  display_area:
+    x: 100
+    y: 100
+    width: 640
+    height: 480
 
-# Monitoring de performance
+  on_frame:
+    - homeassistant.service:
+        service: camera.snapshot
+        data:
+          entity_id: camera.esp32_live_feed
+```
 
-sensor:
+## 3. Multi-caméras avec affichage en mosaïque
 
-- platform: template
-  name: “Video FPS”
-  lambda: return id(rtsp_stream)->get_fps();
-  unit_of_measurement: “fps”
-  update_interval: 1s
-- platform: template
-  name: “Free Heap”
-  lambda: return ESP.getFreeHeap();
-  unit_of_measurement: “B”
-  update_interval: 5s
-- platform: template
-  name: “PSRAM Free”
-  lambda: return ESP.getFreePsram();
-  unit_of_measurement: “B”
-  update_interval: 5s
+```yaml
+# Configuration pour 4 caméras en mosaïque
+live:
+  - id: camera_1
+    rtsp_url: "rtsp://admin:pass@192.168.1.100:554/stream1"
+    decode_format: "h264"
+    display_area: {x: 0, y: 0, width: 400, height: 300}
+    target_fps: 15
+    
+  - id: camera_2  
+    rtsp_url: "rtsp://admin:pass@192.168.1.101:554/stream1"
+    decode_format: "h264"
+    display_area: {x: 400, y: 0, width: 400, height: 300}
+    target_fps: 15
+    
+  - id: camera_3
+    rtsp_url: "rtsp://admin:pass@192.168.1.102:554/stream1" 
+    decode_format: "h264"
+    display_area: {x: 0, y: 300, width: 400, height: 300}
+    target_fps: 15
+    
+  - id: camera_4
+    rtsp_url: "rtsp://admin:pass@192.168.1.103:554/stream1"
+    decode_format: "h264" 
+    display_area: {x: 400, y: 300, width: 400, height: 300}
+    target_fps: 15
 
-# Contrôles via Home Assistant
-
+# Contrôle global des caméras
 switch:
-
-- platform: template
-  name: “RTSP Stream”
-  id: stream_switch
-  turn_on_action:
-  - lambda: id(rtsp_stream)->start_stream();
+  - platform: template
+    name: "All Cameras"
+    turn_on_action:
+      - lambda: |-
+          id(camera_1)->start_stream();
+          id(camera_2)->start_stream(); 
+          id(camera_3)->start_stream();
+          id(camera_4)->start_stream();
     turn_off_action:
-  - lambda: id(rtsp_stream)->stop_stream();
-    lambda: return id(rtsp_stream)->is_streaming();
+      - lambda: |-
+          id(camera_1)->stop_stream();
+          id(camera_2)->stop_stream();
+          id(camera_3)->stop_stream();
+          id(camera_4)->stop_stream();
+```
+
+## 4. Intégration avec détection de mouvement
+
+```yaml
+live:
+  id: security_camera
+  rtsp_url: "rtsp://admin:pass@192.168.1.100:554/stream"
+  decode_format: "h264"
+  target_fps: 30
+  
+  on_frame:
+    - lambda: |-
+        static uint32_t last_motion_check = 0;
+        static std::vector<uint8_t> prev_frame;
+        
+        uint32_t now = millis();
+        if (now - last_motion_check > 1000) {  // Vérifier chaque seconde
+          
+          if (!prev_frame.empty()) {
+            // Simple détection de mouvement par différence de pixels
+            uint32_t diff_pixels = 0;
+            uint32_t total_pixels = frame.width * frame.height;
+            
+            for (uint32_t i = 0; i < total_pixels && i < prev_frame.size(); i++) {
+              if (abs(frame.data[i] - prev_frame[i]) > 30) {
+                diff_pixels++;
+              }
+            }
+            
+            float motion_percent = (float)diff_pixels / total_pixels * 100;
+            
+            if (motion_percent > 5.0) {  // 5% de pixels différents
+              ESP_LOGI("motion", "Motion detected: %.2f%%", motion_percent);
+              
+              // Déclencher une alerte
+              id(motion_detected)->publish_state(true);
+            }
+          }
+          
+          // Sauvegarder la frame actuelle
+          prev_frame.assign(frame.data, frame.data + frame.size);
+          last_motion_check = now;
+        }
 
 binary_sensor:
+  - platform: template
+    name: "Motion Detected"
+    id: motion_detected
+    auto_off: 10s  # Se remet à off après 10 secondes
+```
 
-- platform: template
-  name: “Stream Active”
-  lambda: return id(rtsp_stream)->is_streaming();
+## 5. Enregistrement de snapshots
 
-# Mise à jour périodique de l’interface
-
-interval:
-
-- interval: 100ms
-  then:
-  - lambda: |-
-    // Mise à jour des statistiques en temps réel
-    if (id(rtsp_stream)->is_streaming()) {
-    static uint32_t last_update = 0;
-    uint32_t now = millis();
-    
-    ```
-    if (now - last_update > 1000) {  // Mise à jour chaque seconde
-      char fps_text[20];
-      sprintf(fps_text, "%d FPS", id(rtsp_stream)->get_fps());
-      id(fps_label)->set_text(fps_text);
-      
-      last_update = now;
-    }
-    ```
-    
-    }
-
-# Script de démarrage automatique
-
-script:
-
-- id: auto_start_stream
-  mode: single
-  then:
-  - delay: 5s  # Attendre que tout soit initialisé
-  - lambda: |-
-    ESP_LOGI(“main”, “Auto-starting RTSP stream…”);
-    id(rtsp_stream)->start_stream();
-
-# Démarrage automatique du stream au boot
-
-on_boot:
-priority: -100  # Exécuter après tout le reste
-then:
-- script.execute: auto_start_stream
-
-# Gestion des erreurs et reconnexion automatique
-
-time:
-
-- platform: homeassistant
-  id: ha_time
-  on_time:
+```yaml
+live:
+  id: snapshot_camera
+  rtsp_url: "rtsp://admin:pass@192.168.1.100:554/stream"
   
-  # Vérification de santé toutes les 30 secondes
-  - seconds: /30
-    then:
+  on_frame:
+    - if:
+        condition:
+          lambda: return id(save_snapshot).state;
+        then:
+          - lambda: |-
+              // Sauvegarder le snapshot (implémentation simplifiée)
+              char filename[50];
+              sprintf(filename, "/snapshot_%lu.jpg", millis());
+              
+              // Ici, il faudrait implémenter la sauvegarde sur SD card
+              // ou l'envoi vers un serveur
+              ESP_LOGI("snapshot", "Saving snapshot: %s", filename);
+              
+              id(save_snapshot)->turn_off();
+
+switch:
+  - platform: template
+    name: "Save Snapshot"
+    id: save_snapshot
+    turn_on_action:
+      - delay: 100ms  # Le snapshot sera pris dans on_frame
+```
+
+## 6. Streaming avec audio (si supporté)
+
+```yaml
+live:
+  id: av_stream
+  rtsp_url: "rtsp://admin:pass@192.168.1.100:554/av_stream"
+  decode_format: "h264"
+  enable_audio: true  # Feature à implémenter
+  
+  on_audio_frame:
     - lambda: |-
-      static uint32_t last_fps_check = 0;
-      static uint8_t no_frame_count = 0;
-      
-      uint32_t current_fps = id(rtsp_stream)->get_fps();
-      
-      if (id(rtsp_stream)->is_streaming() && current_fps == 0) {
-      no_frame_count++;
-      ESP_LOGW(“main”, “No frames received, count: %d”, no_frame_count);
-      
-      ```
-      // Reconnexion après 3 vérifications sans frames (90 secondes)
-      if (no_frame_count >= 3) {
-        ESP_LOGI("main", "Reconnecting RTSP stream...");
-        id(rtsp_stream)->stop_stream();
-        delay(2000);
-        id(rtsp_stream)->start_stream();
-        no_frame_count = 0;
-      }
-      ```
-      
-      } else {
-      no_frame_count = 0;  // Reset counter si on reçoit des frames
-      }
+        // Traitement audio (nécessiterait extension du composant)
+        ESP_LOGV("audio", "Audio frame: %d samples", audio_frame.samples);
+```
+
+## 7. Configuration pour performance optimale
+
+```yaml
+# Optimisations pour ESP32-P4
+esphome:
+  platformio_options:
+    # Optimisations mémoire  
+    build_flags:
+      - -DCONFIG_ESP32_DEFAULT_CPU_FREQ_240=1
+      - -DCONFIG_ESP32_SPIRAM_SUPPORT=1
+      - -DCONFIG_SPIRAM_USE_CAPS_ALLOC=1
+      - -DCONFIG_SPIRAM_USE_MALLOC=1
+    
+    # Partitions personnalisées pour plus d'espace
+    board_build.partitions: custom_partitions.csv
+
+live:
+  id: optimized_stream
+  rtsp_url: "rtsp://camera/stream"
+  
+  # Configuration optimisée
+  buffer_size: 65536  # Buffer plus large
+  target_fps: 30
+  enable_hardware_decode: true
+  
+  # Zone d'affichage optimisée
+  display_area:
+    width: 800
+    height: 600
+    
+sensor:
+  # Monitoring des performances
+  - platform: template
+    name: "CPU Usage"
+    lambda: |-
+      TaskHandle_t idle_task = xTaskGetIdleTaskHandle();
+      return 100.0 - (uxTaskGetStackHighWaterMark(idle_task) / 1000.0);
+    unit_of_measurement: "%"
+```
+
+## Notes importantes
+
+- **Mémoire** : Le décodage vidéo HD consomme beaucoup de RAM, utilisez la PSRAM
+- **Performance** : L’ESP32-P4 peut gérer du 1080p@30fps avec les accélérateurs hardware
+- **Formats** : H.264 offre la meilleure qualité/bande passante, MJPEG est plus simple
+- **Réseau** : Une connexion WiFi stable est critique pour le streaming
+- **Température** : Surveillez la température, le décodage vidéo chauffe le processeur
