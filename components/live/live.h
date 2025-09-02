@@ -11,7 +11,7 @@
 // ESP-IDF includes for hardware video decoding
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "esp_ppa.h"
+#include "ppa.h"
 #include "esp_lcd_panel_ops.h"
 
 // ESP-IDF networking
