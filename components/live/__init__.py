@@ -1,7 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from esphome.components import esp32, display, lvgl
+from esphome.components import esp32, display
+from esphome import automation
 
 DEPENDENCIES = ["esp32", "wifi"]
 
@@ -42,10 +43,16 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_DISPLAY_AREA): DISPLAY_AREA_SCHEMA,
     cv.Optional(CONF_LCD_PANEL): cv.use_id(display.DisplayBuffer),
     
-    # Callbacks
-    cv.Optional(CONF_ON_FRAME): cv.automation.validate_automation(single=True),
-    cv.Optional(CONF_ON_CONNECT): cv.automation.validate_automation(single=True),
-    cv.Optional(CONF_ON_DISCONNECT): cv.automation.validate_automation(single=True),
+    # Callbacks - using automation triggers
+    cv.Optional(CONF_ON_FRAME): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template(live_ns.struct("VideoFrame").operator("const").operator("ref")))
+    }),
+    cv.Optional(CONF_ON_CONNECT): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
+    }),
+    cv.Optional(CONF_ON_DISCONNECT): automation.validate_automation({
+        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
+    }),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -70,19 +77,24 @@ async def to_code(config):
         panel = await cg.get_variable(config[CONF_LCD_PANEL])
         cg.add(var.set_lcd_panel(panel))
     
-    # Callbacks
+    # Callbacks - setup automation triggers
     if CONF_ON_FRAME in config:
-        await cg.process_lambda(
-            config[CONF_ON_FRAME],
-            [(live_ns.struct("VideoFrame").operator("ref").operator("const"), "frame")],
-            return_type=cg.void
-        )
-        
+        for conf in config[CONF_ON_FRAME]:
+            trigger = cg.new_Pvariable(conf[CONF_ID])
+            cg.add(var.set_on_frame_trigger(trigger))
+            await automation.build_automation(trigger, [(live_ns.struct("VideoFrame").operator("const").operator("ref"), "frame")], conf)
+            
     if CONF_ON_CONNECT in config:
-        await cg.process_lambda(config[CONF_ON_CONNECT], [], return_type=cg.void)
-        
+        for conf in config[CONF_ON_CONNECT]:
+            trigger = cg.new_Pvariable(conf[CONF_ID])
+            cg.add(var.set_on_connect_trigger(trigger))
+            await automation.build_automation(trigger, [], conf)
+            
     if CONF_ON_DISCONNECT in config:
-        await cg.process_lambda(config[CONF_ON_DISCONNECT], [], return_type=cg.void)
+        for conf in config[CONF_ON_DISCONNECT]:
+            trigger = cg.new_Pvariable(conf[CONF_ID])
+            cg.add(var.set_on_disconnect_trigger(trigger))
+            await automation.build_automation(trigger, [], conf)
     
     # Dépendances ESP-IDF pour le hardware
     cg.add_platformio_option("lib_deps", [
