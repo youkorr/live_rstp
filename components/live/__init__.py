@@ -96,10 +96,9 @@ async def to_code(config):
             cg.add(var.set_on_disconnect_trigger(trigger))
             await automation.build_automation(trigger, [], conf)
     
-    # Dépendances ESP-IDF pour le hardware
-    # Utiliser le composant officiel Espressif esp_h264
+    # Solution 1: Utiliser le composant esp_h264 directement depuis GitHub
     cg.add_platformio_option("lib_deps", [
-        "espressif/esp_h264",
+        "https://github.com/espressif/esp-h264-component.git",
     ])
     
     # Build flags généraux
