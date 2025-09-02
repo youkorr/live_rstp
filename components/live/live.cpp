@@ -3,12 +3,8 @@
 #include <regex>
 #include <sstream>
 
-// ESP-IDF includes for hardware video decoding (ESP32-P4 only)
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-#include "esp_jpeg_dec.h"
-#include "esp_h264_dec.h"
-#include "esp_ppa.h"
-#endif
+// Note: ESP32-P4 hardware decoder headers not available in current ESP-IDF version
+// Hardware acceleration will be disabled for now
 
 namespace esphome {
 namespace live {
