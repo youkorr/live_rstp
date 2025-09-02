@@ -109,7 +109,7 @@ async def to_code(config):
     cg.add_build_flag("-DCONFIG_LWIP_PPP_SUPPORT=1")
     
     # Includes ESP-IDF
-    cg.add_global("#include <esp_jpeg_dec.h>")
-    cg.add_global("#include <esp_h264_dec.h>")
-    cg.add_global("#include <esp_ppa.h>")
-    cg.add_global("#include <esp_lcd_panel_ops.h>")
+    cg.add_global(cg.RawExpression('#include "esp_jpeg_dec.h"'))
+    cg.add_global(cg.RawExpression('#include "esp_h264_dec.h"'))
+    cg.add_global(cg.RawExpression('#include "esp_ppa.h"'))
+    cg.add_global(cg.RawExpression('#include "esp_lcd_panel_ops.h"'))
