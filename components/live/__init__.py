@@ -1,8 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
-from esphome.components import esp32, display
-from esphome import automation
+from esphome.components import esp32, display, lvgl
 
 DEPENDENCIES = ["esp32", "wifi"]
 
@@ -43,16 +42,10 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_DISPLAY_AREA): DISPLAY_AREA_SCHEMA,
     cv.Optional(CONF_LCD_PANEL): cv.use_id(display.DisplayBuffer),
     
-    # Callbacks - using automation triggers
-    cv.Optional(CONF_ON_FRAME): automation.validate_automation({
-        cv.GenerateID(): cv.declare_id(automation.Trigger.template(live_ns.struct("VideoFrame").operator("const").operator("ref")))
-    }),
-    cv.Optional(CONF_ON_CONNECT): automation.validate_automation({
-        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
-    }),
-    cv.Optional(CONF_ON_DISCONNECT): automation.validate_automation({
-        cv.GenerateID(): cv.declare_id(automation.Trigger.template())
-    }),
+    # Callbacks
+    cv.Optional(CONF_ON_FRAME): cv.automation.validate_automation(single=True),
+    cv.Optional(CONF_ON_CONNECT): cv.automation.validate_automation(single=True),
+    cv.Optional(CONF_ON_DISCONNECT): cv.automation.validate_automation(single=True),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -95,6 +88,12 @@ async def to_code(config):
             trigger = cg.new_Pvariable(conf[CONF_ID])
             cg.add(var.set_on_disconnect_trigger(trigger))
             await automation.build_automation(trigger, [], conf)
+    
+    # Dépendances ESP-IDF pour le hardware
+    # Utiliser le composant officiel Espressif esp_h264
+    cg.add_platformio_option("lib_deps", [
+        "espressif/esp_h264",
+    ])
     
     # Build flags généraux
     cg.add_build_flag("-DCONFIG_ESP32_WIFI_ENABLED=1")
