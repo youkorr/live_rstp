@@ -12,7 +12,7 @@
 #ifdef CONFIG_IDF_TARGET_ESP32P4
 //#include "esp_jpeg_dec.h"
 //#include "esp_h264_dec.h"
-#include "esp_ppa.h"
+//#include "esp_ppa.h"
 #endif
 #include "esp_lcd_panel_ops.h"
 
