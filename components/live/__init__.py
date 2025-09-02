@@ -96,20 +96,21 @@ async def to_code(config):
             cg.add(var.set_on_disconnect_trigger(trigger))
             await automation.build_automation(trigger, [], conf)
     
-    # Dépendances ESP-IDF pour le hardware
-    cg.add_platformio_option("lib_deps", [
-        "esp32-jpeg-decoder",
-    ])
+    # Dépendances ESP-IDF pour le hardware (ESP32-P4 seulement)
+    # La bibliothèque esp32-jpeg-decoder n'est pas disponible via PlatformIO
+    # Ces fonctionnalités seront activées automatiquement sur ESP32-P4
     
-    # Flags de compilation pour activer les accélérateurs hardware
-    cg.add_build_flag("-DCONFIG_ESP32P4_JPEG_DECODE_ACCELERATE=1")
-    cg.add_build_flag("-DCONFIG_ESP32P4_H264_DECODE_ACCELERATE=1") 
-    cg.add_build_flag("-DCONFIG_ESP32P4_PPA_ACCELERATE=1")
+    # Flags de compilation conditionnels pour ESP32-P4
+    cg.add_define("ESP32_P4_HARDWARE_DECODE_SUPPORT")
+    
+    # Build flags généraux
     cg.add_build_flag("-DCONFIG_ESP32_WIFI_ENABLED=1")
     cg.add_build_flag("-DCONFIG_LWIP_PPP_SUPPORT=1")
     
-    # Includes ESP-IDF
+    # Includes ESP-IDF - conditionnels pour ESP32-P4
+    cg.add_global(cg.RawExpression('#ifdef CONFIG_IDF_TARGET_ESP32P4'))
     cg.add_global(cg.RawExpression('#include "esp_jpeg_dec.h"'))
     cg.add_global(cg.RawExpression('#include "esp_h264_dec.h"'))
     cg.add_global(cg.RawExpression('#include "esp_ppa.h"'))
+    cg.add_global(cg.RawExpression('#endif'))
     cg.add_global(cg.RawExpression('#include "esp_lcd_panel_ops.h"'))
