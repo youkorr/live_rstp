@@ -11,7 +11,7 @@
 // ESP-IDF includes for hardware video decoding (ESP32-P4 only)
 #ifdef CONFIG_IDF_TARGET_ESP32P4
 #include "esp_jpeg_dec.h"
-#include "esp_h264_dec.h"
+//#include "esp_h264_dec.h"
 #include "esp_ppa.h"
 #endif
 #include "esp_lcd_panel_ops.h"
