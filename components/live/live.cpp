@@ -54,6 +54,7 @@ void LiveComponent::loop() {
 }
 
 bool LiveComponent::init_hardware_decoders() {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   esp_err_t ret;
 
   // Initialiser le décodeur JPEG hardware
@@ -104,9 +105,14 @@ bool LiveComponent::init_hardware_decoders() {
   }
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware decoders not available on this platform");
+  return false;
+#endif
 }
 
 void LiveComponent::cleanup_hardware_decoders() {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (jpeg_decoder_) {
     jpeg_del_decoder_engine(jpeg_decoder_);
     jpeg_decoder_ = nullptr;
@@ -121,6 +127,7 @@ void LiveComponent::cleanup_hardware_decoders() {
     ppa_unregister_client(ppa_client_);
     ppa_client_ = nullptr;
   }
+#endif
 }
 
 bool LiveComponent::start_stream() {
@@ -161,6 +168,7 @@ void LiveComponent::stop_stream() {
 }
 
 bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!jpeg_decoder_) {
     ESP_LOGW(TAG, "JPEG decoder not initialized");
     return false;
@@ -201,9 +209,14 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware JPEG decoder not available on this platform");
+  return false;
+#endif
 }
 
 bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!h264_decoder_) {
     ESP_LOGW(TAG, "H.264 decoder not initialized");
     return false;
@@ -247,6 +260,10 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware H.264 decoder not available on this platform");
+  return false;
+#endif
 }
 
 void LiveComponent::process_rtp_stream() {
@@ -360,6 +377,7 @@ void LiveComponent::display_frame_direct(const VideoFrame &frame) {
 }
 
 bool LiveComponent::scale_frame_with_ppa(const VideoFrame &input, VideoFrame &output) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!ppa_client_) {
     return false;
   }
@@ -403,6 +421,11 @@ bool LiveComponent::scale_frame_with_ppa(const VideoFrame &input, VideoFrame &ou
   output.is_keyframe = input.is_keyframe;
 
   return true;
+#else
+  // Software scaling fallback (basic implementation)
+  ESP_LOGW(TAG, "Hardware PPA not available, no scaling performed");
+  return false;
+#endif
 }
 
 // Basic RTSP implementation using ESP-IDF sockets
