@@ -8,13 +8,16 @@
 #include <vector>
 #include <functional>
 
-// ESP-IDF includes for hardware video decoding (ESP32-P4 only)
+// Forward declarations for ESP32-P4 hardware decoders
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-#include "esp_jpeg_dec.h"
-#include "esp_h264_dec.h"
-#include "esp_ppa.h"
+typedef struct jpeg_decoder_t* jpeg_decoder_handle_t;
+typedef struct esp_h264_dec_t* esp_h264_dec_handle_t;
+typedef struct ppa_client_t* ppa_client_handle_t;
+#else
+typedef void* jpeg_decoder_handle_t;
+typedef void* esp_h264_dec_handle_t;
+typedef void* ppa_client_handle_t;
 #endif
-#include "esp_lcd_panel_ops.h"
 
 // ESP-IDF networking
 #include "esp_wifi.h"
@@ -82,12 +85,10 @@ class LiveComponent : public Component {
   std::unique_ptr<uint8_t[]> buffer_;
   std::unique_ptr<uint8_t[]> decode_buffer_;
 
-  // Hardware decoders (ESP32-P4 only)
-#ifdef CONFIG_IDF_TARGET_ESP32P4
+  // Hardware decoders (handles are void* on non-P4 platforms)
   jpeg_decoder_handle_t jpeg_decoder_{nullptr};
   esp_h264_dec_handle_t h264_decoder_{nullptr};
   ppa_client_handle_t ppa_client_{nullptr};
-#endif
 
   // LCD display
   esp_lcd_panel_handle_t lcd_panel_{nullptr};
