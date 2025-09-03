@@ -9,7 +9,7 @@
  *  Bibliothèques matérielles – déjà incluses dans le header.
  * ------------------------------------------------------------------ */
 #include "esp_jpeg_dec.h"
-#include "esp_h264_decoder.h"
+#include "esp_h264_dec.h"
 #include "esp_h264_types.h"
 #endif
 
