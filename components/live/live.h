@@ -1,7 +1,7 @@
 #pragma once
-
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
 #include "esphome/components/wifi/wifi_component.h"
 #include "esphome/components/network/ip_address.h"
 #include <memory>
@@ -9,10 +9,12 @@
 #include <functional>
 
 // ESP-IDF includes for hardware video decoding
+#ifdef CONFIG_IDF_TARGET_ESP32P4
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
 #include "ppa.h"
 #include "esp_lcd_panel_ops.h"
+#endif
 
 // ESP-IDF networking
 #include "esp_wifi.h"
@@ -51,8 +53,11 @@ class LiveComponent : public Component {
     on_frame_callback_ = std::move(callback);
   }
 
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   // Callbacks pour affichage direct sur LCD
   void set_lcd_panel(esp_lcd_panel_handle_t panel) { lcd_panel_ = panel; }
+#endif
+  
   void set_display_area(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     display_x_ = x; display_y_ = y; display_w_ = w; display_h_ = h;
   }
@@ -80,13 +85,17 @@ class LiveComponent : public Component {
   std::unique_ptr<uint8_t[]> buffer_;
   std::unique_ptr<uint8_t[]> decode_buffer_;
 
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   // Hardware decoders (utilisant le composant esp_h264 officiel)
   esp_h264_dec_handle_t h264_decoder_{nullptr};
+  jpeg_dec_handle_t jpeg_decoder_{nullptr};
+  ppa_client_handle_t ppa_client_{nullptr};
 
   // LCD display
   esp_lcd_panel_handle_t lcd_panel_{nullptr};
-  uint16_t display_x_{0}, display_y_{0}, display_w_{320}, display_h_{240};
+#endif
 
+  uint16_t display_x_{0}, display_y_{0}, display_w_{320}, display_h_{240};
   std::function<void(const VideoFrame &)> on_frame_callback_;
 
   // RTSP protocol
