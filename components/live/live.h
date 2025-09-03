@@ -9,15 +9,15 @@
 #include <functional>
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-/* ----- ESP‑IDF drivers (new API) ----- */
+/* ----- Bibliothèques matérielles ----- */
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "esp_h264_types.h"   // <-- nouvelles définitions de structures
+#include "esp_h264_types.h"          // <-- bon header pour les structs
 #include "ppa.h"
 #include "esp_lcd_panel_ops.h"
 #endif
 
-/* ----- ESP‑IDF networking ----- */
+/* ----- Bibliothèques réseau ESP‑IDF ----- */
 #include "esp_wifi.h"
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
@@ -27,17 +27,14 @@ namespace live {
 
 static const char *const TAG = "live";
 
-/* ----------------------------------------------------------------------
-   Structure representing a decoded video frame – utilisée dans les
-   déclencheurs d’automatisation.
-   ---------------------------------------------------------------------- */
+/* Structure représentant une trame vidéo décodée */
 struct VideoFrame {
   uint8_t *data{nullptr};
-  size_t size{0};
+  size_t   size{0};
   uint16_t width{0};
   uint16_t height{0};
   uint32_t timestamp{0};
-  bool is_keyframe{false};
+  bool     is_keyframe{false};
 };
 
 class LiveComponent : public Component {
@@ -46,26 +43,20 @@ class LiveComponent : public Component {
   void loop() override;
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
-  /* --------------------------------------------------------------------
-     Configuration setters – appelés depuis __init__.py
-     -------------------------------------------------------------------- */
+  /* ----- Configuration ----- */
   void set_rtsp_url(const std::string &url) { rtsp_url_ = url; }
   void set_buffer_size(uint32_t size) { buffer_size_ = size; }
   void set_timeout(uint32_t timeout) { timeout_ms_ = timeout; }
   void set_target_fps(uint8_t fps) { target_fps_ = fps; }
   void set_decode_format(const std::string &format) { decode_format_ = format; }
 
-  /* --------------------------------------------------------------------
-     Callback registration (exposé aux automatisations)
-     -------------------------------------------------------------------- */
+  /* ----- Callbacks ----- */
   void set_on_frame_callback(std::function<void(const VideoFrame &)> &&callback) {
     on_frame_callback_ = std::move(callback);
   }
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-  /* --------------------------------------------------------------------
-     LCD panel handling – uniquement sur ESP32‑P4
-     -------------------------------------------------------------------- */
+  /* ----- Affichage direct sur LCD (ESP32‑P4) ----- */
   void set_lcd_panel(esp_lcd_panel_handle_t panel) { lcd_panel_ = panel; }
 #endif
 
@@ -76,90 +67,80 @@ class LiveComponent : public Component {
     display_h_ = h;
   }
 
-  /* --------------------------------------------------------------------
-     Public control API
-     -------------------------------------------------------------------- */
+  /* ----- Contrôle du flux ----- */
   bool start_stream();
   void stop_stream();
   bool is_streaming() const { return streaming_; }
   uint32_t get_fps() const { return current_fps_; }
 
+  /* ----- Décodage matériel ----- */
   void enable_hardware_decoding(bool enable) { use_hardware_decode_ = enable; }
 
  protected:
-  /* --------------------------------------------------------------------
-     Configuration members
-     -------------------------------------------------------------------- */
+  /* ----- Variables de configuration ----- */
   std::string rtsp_url_;
   std::string decode_format_{"h264"};
-  uint32_t buffer_size_{8192};
-  uint32_t timeout_ms_{5000};
-  uint8_t target_fps_{30};
-  bool streaming_{false};
-  bool use_hardware_decode_{true};
-  uint32_t current_fps_{0};
+  uint32_t    buffer_size_{8192};
+  uint32_t    timeout_ms_{5000};
+  uint8_t     target_fps_{30};
+  bool        streaming_{false};
+  bool        use_hardware_decode_{true};
+  uint32_t    current_fps_{0};
 
-  /* --------------------------------------------------------------------
-     Buffers
-     -------------------------------------------------------------------- */
-  std::unique_ptr<uint8_t[]> buffer_;          // réception RTP
-  std::unique_ptr<uint8_t[]> decode_buffer_;  // décodage (RGB/YUV)
+  /* ----- Buffers ----- */
+  std::unique_ptr<uint8_t[]> buffer_;         // tampon brut du socket
+  std::unique_ptr<uint8_t[]> decode_buffer_; // tampon décodé (RGB/YUV)
 
-  /* --------------------------------------------------------------------
-     ESP‑IDF handles – uniquement sur ESP32‑P4
-     -------------------------------------------------------------------- */
 #ifdef CONFIG_IDF_TARGET_ESP32P4
+  /* ----- Décodeurs matériels ----- */
   esp_h264_dec_handle_t h264_decoder_{nullptr};
-  jpeg_dec_handle_t jpeg_decoder_{nullptr};
-  ppa_client_handle_t ppa_client_{nullptr};
+  jpeg_dec_handle_t    jpeg_decoder_{nullptr};
+  ppa_client_handle_t  ppa_client_{nullptr};
+
+  /* ----- Panel LCD ----- */
   esp_lcd_panel_handle_t lcd_panel_{nullptr};
 #endif
 
-  /* --------------------------------------------------------------------
-     Display geometry
-     -------------------------------------------------------------------- */
+  /* ----- Zone d’affichage ----- */
   uint16_t display_x_{0}, display_y_{0}, display_w_{320}, display_h_{240};
 
-  /* --------------------------------------------------------------------
-     Callback storage
-     -------------------------------------------------------------------- */
+  /* ----- Callback utilisateur ----- */
   std::function<void(const VideoFrame &)> on_frame_callback_;
 
-  /* --------------------------------------------------------------------
-     RTSP / network state
-     -------------------------------------------------------------------- */
-  int socket_fd_{-1};
-  std::vector<uint8_t> rtp_buffer_;
-  uint16_t last_sequence_{0};
-
-  std::string session_id_;
-  uint16_t client_port_{8000};
-  uint16_t server_port_{0};
-  uint32_t sequence_number_{0};
-
-  /* --------------------------------------------------------------------
-     Performance counters
-     -------------------------------------------------------------------- */
-  uint32_t frame_count_{0};
-  uint32_t last_fps_calc_{0};
-
-  /* --------------------------------------------------------------------
-     Private helpers – implémentés dans live.cpp
-     -------------------------------------------------------------------- */
+  /* ----- Gestion du protocole RTSP ----- */
   bool connect_rtsp();
   void disconnect_rtsp();
   bool send_rtsp_request(const std::string &request);
   std::string receive_rtsp_response();
   void process_rtp_stream();
 
+  /* ----- Décodage matériel ----- */
   bool init_hardware_decoders();
   void cleanup_hardware_decoders();
-
   bool decode_jpeg_frame(const uint8_t *data, size_t len, VideoFrame &frame);
   bool decode_h264_frame(const uint8_t *data, size_t len, VideoFrame &frame);
 
+  /* ----- Affichage ----- */
   void display_frame_direct(const VideoFrame &frame);
   bool scale_frame_with_ppa(const VideoFrame &input, VideoFrame &output);
+
+  /* ----- Statistiques ----- */
+  uint32_t frame_count_{0};
+  uint32_t last_fps_calc_{0};
+
+  /* ----- Traitement RTP ----- */
+  std::vector<uint8_t> rtp_buffer_;
+  uint16_t             last_sequence_{0};
+
+  /* ----- Variables RTSP ----- */
+  std::string session_id_;
+  uint16_t    client_port_{8000};
+  uint16_t    server_port_{0};
+  uint32_t    sequence_number_{0};
+
+  /* ----- Socket descriptors ----- */
+  int rtsp_socket_{-1};
+  int rtp_socket_{-1};
 };
 
 }  // namespace live
