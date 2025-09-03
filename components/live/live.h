@@ -14,7 +14,7 @@
  * ------------------------------------------------------------------ */
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "ppa.h"
+#include "esp_ppa.h"
 #include "esp_lcd_panel_ops.h"
 #endif
 
@@ -102,7 +102,7 @@ class LiveComponent : public Component {
   /* -------------------------- Décodeurs matériels ---------------- */
   esp_h264_dec_handle_t h264_decoder_{nullptr};
   jpeg_decoder_handle_t jpeg_decoder_{nullptr};
-  esp_ppa_client_handle_t ppa_client_{nullptr};
+  ppa_client_handle_t  ppa_client_{nullptr};
 
   /* -------------------------- Panel LCD -------------------------- */
   esp_lcd_panel_handle_t lcd_panel_{nullptr};
