@@ -1,5 +1,6 @@
 #include "live.h"
 #include "esphome/core/log.h"
+#include "esphome/core/hal.h"
 #include <regex>
 #include <sstream>
 
@@ -61,16 +62,17 @@ void LiveComponent::loop() {
 }
 
 bool LiveComponent::init_hardware_decoders() {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   esp_err_t ret;
 
   // Initialiser le décodeur JPEG hardware
   if (decode_format_ == "jpeg" || decode_format_ == "mjpeg") {
-    jpeg_decoder_config_t jpeg_config = {
-      .output_format = JPEG_DECODE_OUT_FORMAT_RGB565,
-      .rotate = JPEG_ROTATE_0D,
+    jpeg_dec_config_t jpeg_config = {
+      .output_format = JPEG_DEC_OUT_FORMAT_RGB565,
+      .rotate = JPEG_DEC_ROTATE_0D,
     };
 
-    ret = jpeg_new_decoder_engine(&jpeg_config, &jpeg_decoder_);
+    ret = jpeg_dec_open(&jpeg_config, &jpeg_decoder_);
     if (ret != ESP_OK) {
       ESP_LOGE(TAG, "Failed to create JPEG decoder: %s", esp_err_to_name(ret));
       return false;
@@ -80,7 +82,7 @@ bool LiveComponent::init_hardware_decoders() {
 
   // Initialiser le décodeur H.264 hardware
   if (decode_format_ == "h264") {
-    esp_h264_dec_config_t h264_config = {
+    esp_h264_dec_cfg_t h264_config = {
       .max_width = 1920,
       .max_height = 1080,
       .task_stack_size = 20 * 1024,
@@ -111,11 +113,16 @@ bool LiveComponent::init_hardware_decoders() {
   }
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware decoding only available on ESP32-P4");
+  return false;
+#endif
 }
 
 void LiveComponent::cleanup_hardware_decoders() {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (jpeg_decoder_) {
-    jpeg_del_decoder_engine(jpeg_decoder_);
+    jpeg_dec_close(jpeg_decoder_);
     jpeg_decoder_ = nullptr;
   }
 
@@ -128,6 +135,7 @@ void LiveComponent::cleanup_hardware_decoders() {
     ppa_unregister_client(ppa_client_);
     ppa_client_ = nullptr;
   }
+#endif
 }
 
 bool LiveComponent::start_stream() {
@@ -168,6 +176,7 @@ void LiveComponent::stop_stream() {
 }
 
 bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!jpeg_decoder_) {
     ESP_LOGW(TAG, "JPEG decoder not initialized");
     return false;
@@ -177,10 +186,10 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFram
   uint32_t out_size = 0;
 
   // Décoder avec le hardware JPEG
-  ret = jpeg_decoder_process(jpeg_decoder_,
-                           const_cast<uint8_t*>(data), len,
-                           decode_buffer_.get(), 1920 * 1080 * 2, // RGB565
-                           &out_size);
+  ret = jpeg_dec_process(jpeg_decoder_,
+                        const_cast<uint8_t*>(data), len,
+                        decode_buffer_.get(), 1920 * 1080 * 2, // RGB565
+                        &out_size);
 
   if (ret != ESP_OK) {
     ESP_LOGW(TAG, "JPEG decode failed: %s", esp_err_to_name(ret));
@@ -188,8 +197,8 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFram
   }
 
   // Obtenir les dimensions de l'image
-  jpeg_decode_picture_info_t info;
-  ret = jpeg_decoder_get_info(data, len, &info);
+  jpeg_dec_header_info_t info;
+  ret = jpeg_dec_parse_header(data, len, &info);
   if (ret == ESP_OK) {
     frame.width = info.width;
     frame.height = info.height;
@@ -208,22 +217,27 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware JPEG decoding not available");
+  return false;
+#endif
 }
 
 bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFrame &frame) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
   if (!h264_decoder_) {
     ESP_LOGW(TAG, "H.264 decoder not initialized");
     return false;
   }
 
   esp_err_t ret;
-  esp_h264_dec_in_frame_t in_frame = {
+  esp_h264_enc_frame_t in_frame = {
     .buffer = const_cast<uint8_t*>(data),
     .len = len,
     .consumed_len = 0,
   };
 
-  esp_h264_dec_out_frame_t out_frame = {
+  esp_h264_enc_frame_t out_frame = {
     .buffer = decode_buffer_.get(),
     .size = 1920 * 1080 * 3, // YUV420
     .width = 0,
@@ -254,6 +268,10 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data, size_t len, VideoFram
           frame.width, frame.height, frame.size);
 
   return true;
+#else
+  ESP_LOGW(TAG, "Hardware H.264 decoding not available");
+  return false;
+#endif
 }
 
 void LiveComponent::process_rtp_stream() {
@@ -367,8 +385,19 @@ void LiveComponent::display_frame_direct(const VideoFrame &frame) {
 }
 
 bool LiveComponent::scale_frame_with_ppa(const VideoFrame &input, VideoFrame &output) {
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+  if (!ppa_client_) {
+    ESP_LOGW(TAG, "PPA client not initialized");
+    return false;
+  }
+  // Implementation would go here - complex PPA operations
+  // For now, return false to use software fallback
+  ESP_LOGW(TAG, "PPA scaling not yet implemented");
+  return false;
+#else
   ESP_LOGW(TAG, "Hardware PPA not available - no scaling performed");
   return false;
+#endif
 }
 
 // Basic RTSP implementation using ESP-IDF sockets
