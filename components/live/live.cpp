@@ -8,7 +8,7 @@
 /*  Bibliothèques matérielles  */
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "esp_h264_dec_types.h"
+#include "esp_h264_types.h"
 #include "ppa.h"
 #endif
 
