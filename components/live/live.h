@@ -101,7 +101,7 @@ class LiveComponent : public Component {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   /* -------------------------- Décodeurs matériels ---------------- */
   esp_h264_dec_handle_t h264_decoder_{nullptr};
-  jpeg_decoder_handle_t jpeg_decoder_{nullptr};
+  jpeg_dec_handle_t    jpeg_decoder_{nullptr};
   ppa_client_handle_t  ppa_client_{nullptr};
 
   /* -------------------------- Panel LCD -------------------------- */
