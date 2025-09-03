@@ -5,10 +5,10 @@
 #include <sstream>
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-/*  Bibliothèques matérielles  */
+/* Bibliothèques matérielles */
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "esp_h264_types.h"
+#include "esp_h264_types.h"          // <-- bon header
 #include "ppa.h"
 #endif
 
@@ -196,12 +196,11 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data,
   if (!jpeg_decoder_)
     return false;
 
-  /* Préparer la structure d’I/O attendue par le driver */
   jpeg_dec_io_t io = {
-      .inbuf      = const_cast<uint8_t *>(data),   // le driver peut modifier le pointeur
+      .inbuf      = const_cast<uint8_t *>(data),
       .inbuf_len  = len,
       .outbuf     = decode_buffer_.get(),
-      .outbuf_len = 1920 * 1080 * 2,               // RGB565 (2 bytes/pixel)
+      .outbuf_len = 1920 * 1080 * 2,   // RGB565 (2 bytes/pixel)
   };
 
   jpeg_error_t err = jpeg_dec_process(jpeg_decoder_, &io);
@@ -210,25 +209,22 @@ bool LiveComponent::decode_jpeg_frame(const uint8_t *data,
     return false;
   }
 
-  /* Récupérer les dimensions via le header */
   jpeg_dec_header_info_t hdr;
   err = jpeg_dec_parse_header(jpeg_decoder_, &io, &hdr);
   if (err == JPEG_ERR_OK) {
     frame.width  = hdr.width;
     frame.height = hdr.height;
   } else {
-    /* Si le header ne passe pas, on se rabat sur des valeurs par défaut */
     frame.width  = 640;
     frame.height = 480;
   }
 
   frame.data      = decode_buffer_.get();
-  frame.size      = io.outbuf_len_used;   // nombre d’octets réellement remplis
+  frame.size      = io.outbuf_len_used;
   frame.timestamp = millis();
   frame.is_keyframe = true;
   return true;
 #else
-  /* Fallback software – not implemented here */
   return false;
 #endif
 }
@@ -247,7 +243,7 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data,
   esp_h264_dec_input_frame_t in = {
       .buf = const_cast<uint8_t *>(data),
       .len = len,
-      .pts = 0,                 // on ne gère pas le PTS ici
+      .pts = 0,
   };
 
   /* Output buffer – on fournit notre tampon pré‑alloué */
@@ -275,7 +271,7 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data,
   frame.width     = out.width;
   frame.height    = out.height;
   frame.timestamp = millis();
-  frame.is_keyframe = (in.len > 0);   // approximation simple
+  frame.is_keyframe = true;   // approximation simple
   return true;
 #else
   return false;
@@ -286,29 +282,23 @@ bool LiveComponent::decode_h264_frame(const uint8_t *data,
  *  TRAITEMENT DU FLUX RTP
  * -------------------------------------------------------------- */
 void LiveComponent::process_rtp_stream() {
-  /* Le socket RTP a déjà été créé lors de la phase SETUP.
-   * On lit les paquets, on reconstitue les NALUs et on les décod
-   * selon le format choisi. */
-
   ssize_t recv_len = recv(rtp_socket_, buffer_.get(), buffer_size_, MSG_DONTWAIT);
   if (recv_len <= 0) {
-    /* Aucun paquet disponible – on sort simplement */
-    return;
+    return;   // aucun paquet disponible
   }
 
-  /* RTP header (12 octets) – on ignore la plupart des champs */
+  /* En-tête RTP (12 octets) – on ignore la plupart des champs */
   const uint8_t *payload = buffer_.get() + 12;
   size_t        payload_len = static_cast<size_t>(recv_len) - 12;
 
-  /* Gestion très basique du séquencage – on saute les paquets perdus */
-  uint16_t seq = (payload[-2] << 8) | payload[-1];
-  if (last_sequence_ != 0 && (seq != (uint16_t)(last_sequence_ + 1))) {
-    ESP_LOGV(TAG, "RTP packet loss detected (expected %u, got %u)",
+  /* Séquence – simple contrôle de perte */
+  uint16_t seq = (buffer_[2] << 8) | buffer_[3];
+  if (last_sequence_ != 0 && seq != (uint16_t)(last_sequence_ + 1)) {
+    ESP_LOGV(TAG, "RTP packet loss (expected %u, got %u)",
              (uint16_t)(last_sequence_ + 1), seq);
   }
   last_sequence_ = seq;
 
-  /* Selon le format, on appelle le bon décodage */
   VideoFrame frame{};
   bool decoded = false;
 
@@ -319,14 +309,12 @@ void LiveComponent::process_rtp_stream() {
   }
 
   if (!decoded) {
-    ESP_LOGV(TAG, "Frame could not be decoded – skipping");
+    ESP_LOGV(TAG, "Unable to decode received RTP payload");
     return;
   }
 
   ++frame_count_;
 
-  /* Si un panneau LCD est configuré, on dessine directement dessus.
-   * Sinon on déclenche le callback utilisateur. */
   if (lcd_panel_) {
     display_frame_direct(frame);
   } else if (on_frame_callback_) {
