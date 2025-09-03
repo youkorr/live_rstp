@@ -10,17 +10,16 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
 /* ------------------------------------------------------------------
- *  Bibliothèques matérielles – on inclut les headers « nouveaux ».
+ *  Bibliothèques matérielles – ESP32-P4 specific headers
  * ------------------------------------------------------------------ */
-#include "esp_jpeg_dec.h"          // ← nouveau header JPEG
-#include "esp_h264_dec.h"          // ← nouveau header H.264
-#include "esp_h264_types.h"            // définitions de structures
-#include "ppa.h"
+#include "esp_jpeg_dec.h"
+#include "esp_h264_dec.h"
+#include "esp_ppa.h"
 #include "esp_lcd_panel_ops.h"
 #endif
 
 /* ------------------------------------------------------------------
- *  Bibliothèques réseau (POSIX‑like) – toujours les mêmes.
+ *  Bibliothèques réseau (POSIX‑like)
  * ------------------------------------------------------------------ */
 #include "esp_wifi.h"
 #include "lwip/sockets.h"
@@ -102,18 +101,22 @@ class LiveComponent : public Component {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   /* -------------------------- Décodeurs matériels ---------------- */
   esp_h264_dec_handle_t h264_decoder_{nullptr};
-  jpeg_dec_handle_t    jpeg_decoder_{nullptr};
-  ppa_client_handle_t  ppa_client_{nullptr};
+  jpeg_decoder_handle_t jpeg_decoder_{nullptr};
+  esp_ppa_client_handle_t ppa_client_{nullptr};
 
   /* -------------------------- Panel LCD -------------------------- */
   esp_lcd_panel_handle_t lcd_panel_{nullptr};
 #endif
 
-  /* -------------------------- Zone d’affichage ------------------ */
+  /* -------------------------- Zone d'affichage ------------------ */
   uint16_t display_x_{0}, display_y_{0}, display_w_{320}, display_h_{240};
 
   /* -------------------------- Callback utilisateur --------------- */
   std::function<void(const VideoFrame &)> on_frame_callback_;
+
+  /* -------------------------- RTSP / RTP sockets ----------------- */
+  int rtsp_socket_{-1};
+  int rtp_socket_{-1};
 
   /* -------------------------- RTSP / RTP -------------------------- */
   bool connect_rtsp();
@@ -144,10 +147,6 @@ class LiveComponent : public Component {
   uint16_t    client_port_{8000};
   uint16_t    server_port_{0};
   uint32_t    sequence_number_{0};
-
-  /* -------------------------- Sockets --------------------------- */
-  int rtsp_socket_{-1};
-  int rtp_socket_{-1};
 };
 
 }  // namespace live
