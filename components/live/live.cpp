@@ -5,54 +5,48 @@
 #include <sstream>
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-/* Bibliothèques matérielles */
-#include "esp_jpeg_dec.h"
-#include "esp_h264_dec.h"
-#include "esp_h264_types.h"          // <-- bon header
-#include "ppa.h"
+/* ------------------------------------------------------------------
+ *  Bibliothèques matérielles – déjà incluses dans le header.
+ * ------------------------------------------------------------------ */
+#include "esp_jpeg_decoder.h"
+#include "esp_h264_decoder.h"
+#include "esp_h264_types.h"
 #endif
 
 namespace esphome {
 namespace live {
 
-/* --------------------------------------------------------------
+/* ------------------------------------------------------------------
  *  SETUP
- * -------------------------------------------------------------- */
+ * ------------------------------------------------------------------ */
 void LiveComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up LIVE RTSP component with hardware acceleration…");
-  ESP_LOGCONFIG(TAG, "  RTSP URL: %s", rtsp_url_.c_str());
-  ESP_LOGCONFIG(TAG, "  Buffer size: %u", buffer_size_);
-  ESP_LOGCONFIG(TAG, "  Target FPS: %u", target_fps_);
-  ESP_LOGCONFIG(TAG, "  Decode format: %s", decode_format_.c_str());
-  ESP_LOGCONFIG(TAG, "  Hardware decode: %s",
-                use_hardware_decode_ ? "enabled" : "disabled");
+  ESP_LOGCONFIG(TAG, "Live component setup – RTSP URL: %s", rtsp_url_.c_str());
+  ESP_LOGCONFIG(TAG, "  Buffer size: %u, target FPS: %u", buffer_size_, target_fps_);
+  ESP_LOGCONFIG(TAG, "  Decode format: %s, HW decode: %s",
+                decode_format_.c_str(),
+                use_hardware_decode_ ? "yes" : "no");
 
   /* Allocation des tampons */
-  buffer_ = std::make_unique<uint8_t[]>(buffer_size_);
-  decode_buffer_ = std::make_unique<uint8_t[]>(
-      1920 * 1080 *
-      3);  // 1080p RGB/YUV – taille maximale suffisante pour nos tests
+  buffer_        = std::make_unique<uint8_t[]>(buffer_size_);
+  decode_buffer_ = std::make_unique<uint8_t[]>(1920 * 1080 * 3);  // YUV420 max
 
-  /* Vérification du Wi‑Fi */
   if (!wifi::global_wifi_component->is_connected()) {
-    ESP_LOGW(TAG, "Wi‑Fi not connected – RTSP streaming will be unavailable");
+    ESP_LOGW(TAG, "Wi‑Fi not connected – streaming will stay disabled");
     return;
   }
 
-  /* Initialise les décodeurs matériels si demandé */
   if (use_hardware_decode_) {
     if (!init_hardware_decoders()) {
-      ESP_LOGW(TAG, "Hardware decoder init failed – falling back to software");
+      ESP_LOGW(TAG,
+               "Hardware decoder init failed – falling back to software mode");
       use_hardware_decode_ = false;
     }
   }
-
-  ESP_LOGD(TAG, "LIVE RTSP component setup complete");
 }
 
-/* --------------------------------------------------------------
- *  LOOP – traitement du flux RTP
- * -------------------------------------------------------------- */
+/* ------------------------------------------------------------------
+ *  LOOP – lecture du flux RTP
+ * ------------------------------------------------------------------ */
 void LiveComponent::loop() {
   if (!streaming_)
     return;
@@ -69,9 +63,9 @@ void LiveComponent::loop() {
   }
 }
 
-/* --------------------------------------------------------------
+/* ------------------------------------------------------------------
  *  INITIALISATION DES DÉCODEURS HARDWARE
- * -------------------------------------------------------------- */
+ * ------------------------------------------------------------------ */
 bool LiveComponent::init_hardware_decoders() {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   esp_err_t ret;
@@ -84,27 +78,27 @@ bool LiveComponent::init_hardware_decoders() {
     };
     ret = jpeg_dec_open(&jpeg_cfg, &jpeg_decoder_);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to create JPEG decoder: %s", esp_err_to_name(ret));
+      ESP_LOGE(TAG, "jpeg_dec_open failed: %s", esp_err_to_name(ret));
       return false;
     }
-    ESP_LOGI(TAG, "Hardware JPEG decoder initialized");
+    ESP_LOGI(TAG, "Hardware JPEG decoder ready");
   }
 
   /* ---------- H.264 ---------- */
   if (decode_format_ == "h264") {
     esp_h264_dec_cfg_t h264_cfg = {
-        .max_width_px  = 1920,
-        .max_height_px = 1080,
+        .max_width  = 1920,
+        .max_height = 1080,
         .task_stack_size = 20 * 1024,
         .task_priority   = 5,
         .task_core       = 1,
     };
     ret = esp_h264_dec_open(&h264_cfg, &h264_decoder_);
     if (ret != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to create H.264 decoder: %s", esp_err_to_name(ret));
+      ESP_LOGE(TAG, "esp_h264_dec_open failed: %s", esp_err_to_name(ret));
       return false;
     }
-    ESP_LOGI(TAG, "Hardware H.264 decoder initialized");
+    ESP_LOGI(TAG, "Hardware H.264 decoder ready");
   }
 
   /* ---------- PPA (scaling) ---------- */
@@ -114,22 +108,22 @@ bool LiveComponent::init_hardware_decoders() {
   };
   ret = ppa_register_client(&ppa_cfg, &ppa_client_);
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to register PPA client: %s", esp_err_to_name(ret));
+    ESP_LOGW(TAG, "ppa_register_client failed: %s", esp_err_to_name(ret));
     /* PPA n’est pas critique – on continue sans */
   } else {
-    ESP_LOGI(TAG, "PPA (Pixel Processing Accelerator) initialized");
+    ESP_LOGI(TAG, "PPA (Pixel‑Processing‑Accelerator) ready");
   }
 
   return true;
 #else
-  ESP_LOGW(TAG, "Hardware decoding only available on ESP32‑P4");
+  ESP_LOGW(TAG, "Hardware decoding not available on this target");
   return false;
 #endif
 }
 
-/* --------------------------------------------------------------
+/* ------------------------------------------------------------------
  *  CLEANUP DES DÉCODEURS HARDWARE
- * -------------------------------------------------------------- */
+ * ------------------------------------------------------------------ */
 void LiveComponent::cleanup_hardware_decoders() {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   if (jpeg_decoder_) {
@@ -147,32 +141,30 @@ void LiveComponent::cleanup_hardware_decoders() {
 #endif
 }
 
-/* --------------------------------------------------------------
+/* ------------------------------------------------------------------
  *  DÉMARRAGE / ARRÊT DU FLUX
- * -------------------------------------------------------------- */
+ * ------------------------------------------------------------------ */
 bool LiveComponent::start_stream() {
   if (streaming_) {
-    ESP_LOGW(TAG, "Stream already active");
+    ESP_LOGW(TAG, "Stream already running");
     return true;
   }
 
   if (!wifi::global_wifi_component->is_connected()) {
-    ESP_LOGE(TAG, "Wi‑Fi not connected");
+    ESP_LOGE(TAG, "Wi‑Fi not connected – cannot start stream");
     return false;
   }
 
-  ESP_LOGI(TAG, "Starting RTSP stream: %s", rtsp_url_.c_str());
-
+  ESP_LOGI(TAG, "Connecting to RTSP server …");
   if (!connect_rtsp()) {
-    ESP_LOGE(TAG, "Failed to connect to RTSP server");
+    ESP_LOGE(TAG, "RTSP connection failed");
     return false;
   }
 
   streaming_ = true;
   frame_count_ = 0;
   last_fps_calc_ = millis();
-
-  ESP_LOGI(TAG, "RTSP stream started successfully");
+  ESP_LOGI(TAG, "RTSP stream started");
   return true;
 }
 
@@ -186,9 +178,9 @@ void LiveComponent::stop_stream() {
   current_fps_ = 0;
 }
 
-/* --------------------------------------------------------------
- *  DÉCODAGE JPEG
- * -------------------------------------------------------------- */
+/* ------------------------------------------------------------------
+ *  DÉCODAGE JPEG (hardware)
+ * ------------------------------------------------------------------ */
 bool LiveComponent::decode_jpeg_frame(const uint8_t *data,
                                       size_t        len,
                                       VideoFrame   &frame) {
