@@ -12,7 +12,7 @@
 /* ----- ESP‑IDF drivers (new API) ----- */
 #include "esp_jpeg_dec.h"
 #include "esp_h264_dec.h"
-#include "esp_h264_dec_types.h"   // <-- nouvelles définitions de structures
+#include "esp_h264_types.h"   // <-- nouvelles définitions de structures
 #include "ppa.h"
 #include "esp_lcd_panel_ops.h"
 #endif
