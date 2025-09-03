@@ -12,7 +12,7 @@
 /* ------------------------------------------------------------------
  *  Bibliothèques matérielles – on inclut les headers « nouveaux ».
  * ------------------------------------------------------------------ */
-#include "esp_jpeg_decoder.h"          // ← nouveau header JPEG
+#include "esp_jpeg_dec.h"          // ← nouveau header JPEG
 #include "esp_h264_decoder.h"          // ← nouveau header H.264
 #include "esp_h264_types.h"            // définitions de structures
 #include "ppa.h"
